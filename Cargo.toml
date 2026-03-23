@@ -1,0 +1,20 @@
+[package]
+name = "goap_planner"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+# Test
+rand = "0.9.2"
+rustc-hash = "2"
+
+[profile.release]
+opt-level = 3       # Maximize optimization (default)
+lto = true          # Link Time Optimization (cross-module optimization)
+codegen-units = 1   # Compile slower, but produce faster machine code
+panic = 'abort'     # Remove stack unwinding code (smaller & faster binary)
+strip = true        # Strip symbols to reduce binary size
