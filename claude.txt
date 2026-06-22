@@ -1,0 +1,105 @@
+================================================================
+  GOAP PLANNER — PROJECT SUMMARY & REFLECTION
+================================================================
+
+WHAT I BUILT
+------------
+A domain-agnostic, type-safe Goal-Oriented Action Planning (GOAP)
+library in Rust. It answers the tactical question "What should an
+agent do?" — sequencing a plan of actions to reach a goal — while
+staying completely agnostic about "How to do it" (execution,
+hardware, coordinates, physics).
+
+At its heart is an A* search over a symbolic world. The clever bit
+is the representation:
+
+  - WorldState and GoalState are each a single u64 (a bitfield).
+    Every fact about the world is one bit.
+  - An Action is just four masks (pre-condition mask/value,
+    effect mask/value) plus a cost.
+  - Checking if an action is valid    = one AND + one compare.
+  - Applying an action's effect       = one AND-NOT + one OR.
+  - Checking if the goal is reached    = (state & goal) == goal.
+
+That turns planning logic into raw bit math that compiles down to
+a handful of CPU cycles per step.
+
+
+WHY I MADE THE CHOICES I DID
+----------------------------
+* Bitmask u64 state  -> I wanted planning to be FAST and cache-
+  friendly. Cloning a state for simulation is just copying 8 bytes.
+  No allocations, no hashmaps of string keys.
+
+* "Agnostic" philosophy -> I deliberately refused to let the planner
+  know about object IDs, positions, or physics. Instance-specific
+  plans ("go to Tree_42") are brittle; symbolic plans ("Has(Apple)")
+  are robust and reusable. This separation of concerns was the whole
+  point of the design.
+
+* Logic vs. Cost split -> Hard rules use booleans/enums (you either
+  CAN fly or you can't). Soft preferences use floating cost (you can
+  fly on a critical battery, but it costs 10,000, so the planner
+  naturally avoids it). This avoids piling conditional spaghetti
+  into the planner.
+
+* Performance engineering -> I went past "just works":
+    - A bucket priority queue (O(1) push/pop) instead of a binary
+      heap, exploiting the fact that f-scores are small integers.
+    - Fixed-point heuristic weights to avoid float casts per node.
+    - FxHashSet for the closed set, an arena of nodes (indices
+      instead of pointers), time checks only every 64 expansions.
+    - An aggressive release profile (LTO, codegen-units=1, panic=abort).
+  I also wrote a benchmark harness and small/medium/large missions
+  to measure it honestly.
+
+* Orchestrator pattern -> A state machine (Idle -> Running -> Done)
+  wraps the raw A* engine, keeping the public API clean and lifecycle
+  state separate from the search itself.
+
+
+THE OUTCOME
+-----------
+A working, benchmarked planner core (~1,500 lines) with:
+  - Clean trait/contract boundaries for external systems to plug into.
+  - Multiple example missions and a debug formatter for inspecting
+    state bit-by-bit.
+  - Real performance numbers, not guesses.
+  - Thorough architecture docs (two Mermaid diagrams in the README).
+
+Honest status: the foundation and the hard algorithmic work are done.
+Per the roadmap, unit tests, the async orchestrator wrapper, and the
+"future" features (procedural preconditions, action parameters) are
+still open. It's a strong, fast skeleton rather than a finished crate.
+
+
+WHAT I LEARNED — ABOUT THE WORK
+-------------------------------
+* Abstraction is a force multiplier. The decision to represent the
+  world as bits, made early, paid off everywhere downstream.
+* Choosing the right data structure (bucket queue, arena) beats
+  micro-optimizing the wrong one.
+* Documenting the architecture *as I designed it* forced me to
+  actually understand my own separation of concerns.
+
+
+WHAT I LEARNED — ABOUT MYSELF
+-----------------------------
+* I'm drawn to getting the foundations right. I'd rather build a
+  clean, fast, well-reasoned core than rush to a feature-complete
+  but messy whole. That's a strength — and a thing to watch, because
+  the unglamorous finishing work (tests, the last 20%) is where a
+  library actually becomes usable by other people.
+
+* I think in terms of separation and principle. The "what vs. how"
+  split wasn't an accident; it's how my mind likes to carve up a
+  problem. Naming that philosophy explicitly made the whole system
+  cleaner.
+
+* I enjoy depth over breadth. I went deep on performance because the
+  problem was genuinely interesting to me, not because it was
+  strictly required. Worth remembering: that same energy, pointed at
+  finishing and shipping, is what turns a satisfying personal project
+  into something others can rely on.
+
+================================================================
